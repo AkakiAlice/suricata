@@ -24,7 +24,7 @@ use crate::detect::{
     DetectHelperBufferRegister, DetectHelperKeywordRegister, DetectSignatureSetAppProto,
     SCSigTableElmt, SigMatchAppendSMToList,
 };
-use crate::ldap::types::{LdapMessage, ProtocolOpCode};
+use crate::ldap::types::{LdapMessage, LdapResultCode, ProtocolOp, ProtocolOpCode};
 
 use std::ffi::CStr;
 use std::os::raw::{c_int, c_void};
@@ -36,6 +36,8 @@ enum LdapIndex {
     All,
     Index(i32),
 }
+
+pub static UNKNOWN_CODE: u32 = u32::MAX;
 
 #[derive(Debug, PartialEq)]
 struct DetectLdapRespData {
@@ -53,6 +55,8 @@ static mut G_LDAP_RESPONSES_OPERATION_KW_ID: c_int = 0;
 static mut G_LDAP_RESPONSES_OPERATION_BUFFER_ID: c_int = 0;
 static mut G_LDAP_RESPONSES_COUNT_KW_ID: c_int = 0;
 static mut G_LDAP_RESPONSES_COUNT_BUFFER_ID: c_int = 0;
+static mut G_LDAP_RESPONSES_RESULT_CODE_KW_ID: c_int = 0;
+static mut G_LDAP_RESPONSES_RESULT_CODE_BUFFER_ID: c_int = 0;
 
 unsafe extern "C" fn ldap_parse_protocol_req_op(
     ustr: *const std::os::raw::c_char,
@@ -263,6 +267,81 @@ unsafe extern "C" fn ldap_detect_responses_count_free(_de: *mut c_void, ctx: *mu
     rs_detect_u32_free(ctx);
 }
 
+unsafe extern "C" fn ldap_parse_responses_result_code(
+    ustr: *const std::os::raw::c_char,
+) -> *mut DetectUintData<u8> {
+    let ft_name: &CStr = CStr::from_ptr(ustr); //unsafe
+    if let Ok(s) = ft_name.to_str() {
+        if let Some(ctx) = detect_parse_uint_enum::<u32, LdapResultCode>(s) {
+            let boxed = Box::new(ctx);
+            return Box::into_raw(boxed) as *mut _;
+        }
+    }
+    return std::ptr::null_mut();
+}
+
+unsafe extern "C" fn ldap_detect_responses_result_code_setup(
+    de: *mut c_void, s: *mut c_void, raw: *const libc::c_char,
+) -> c_int {
+    if DetectSignatureSetAppProto(s, ALPROTO_LDAP) != 0 {
+        return -1;
+    }
+    let ctx = ldap_parse_responses_result_code(raw) as *mut c_void;
+    if ctx.is_null() {
+        return -1;
+    }
+    if SigMatchAppendSMToList(
+        de,
+        s,
+        G_LDAP_RESPONSES_RESULT_CODE_KW_ID,
+        ctx,
+        G_LDAP_RESPONSES_RESULT_CODE_BUFFER_ID,
+    )
+    .is_null()
+    {
+        ldap_detect_responses_result_code_free(std::ptr::null_mut(), ctx);
+        return -1;
+    }
+    return 0;
+}
+
+unsafe extern "C" fn ldap_detect_responses_result_code_match(
+    _de: *mut c_void, _f: *mut c_void, _flags: u8, _state: *mut c_void, tx: *mut c_void,
+    _sig: *const c_void, ctx: *const c_void,
+) -> c_int {
+    let tx = cast_pointer!(tx, LdapTransaction);
+    let ctx = cast_pointer!(ctx, DetectUintData<u32>);
+
+    let mut result = 0;
+    for responses in &tx.responses {
+        //SCLogInfo!("Banana");
+        let result_code: u32 = match &responses.protocol_op {
+            ProtocolOp::BindResponse(req) => req.result.result_code.0,
+            ProtocolOp::SearchResultDone(req) => req.result_code.0,
+            ProtocolOp::ModifyResponse(req) => req.result.result_code.0,
+            ProtocolOp::AddResponse(req) => req.result_code.0,
+            ProtocolOp::DelResponse(req) => req.result_code.0,
+            ProtocolOp::ModDnResponse(req) => req.result_code.0,
+            ProtocolOp::CompareResponse(req) => req.result_code.0,
+            ProtocolOp::ExtendedResponse(req) => req.result.result_code.0,
+            _ => UNKNOWN_CODE,
+        };
+        if result_code != UNKNOWN_CODE {
+            result = rs_detect_u32_match(result_code, ctx);
+            if result == 1 {
+                return result;
+            }
+        }
+    }
+    return result;
+}
+
+unsafe extern "C" fn ldap_detect_responses_result_code_free(_de: *mut c_void, ctx: *mut c_void) {
+    // Just unbox...
+    let ctx = cast_pointer!(ctx, DetectUintData<u32>);
+    rs_detect_u32_free(ctx);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ScDetectLdapRegister() {
     let kw = SCSigTableElmt {
@@ -310,6 +389,23 @@ pub unsafe extern "C" fn ScDetectLdapRegister() {
     G_LDAP_RESPONSES_COUNT_KW_ID = DetectHelperKeywordRegister(&kw);
     G_LDAP_RESPONSES_COUNT_BUFFER_ID = DetectHelperBufferRegister(
         b"ldap.responses.count\0".as_ptr() as *const libc::c_char,
+        ALPROTO_LDAP,
+        true,  //to client
+        false, //to server
+    );
+    let kw = SCSigTableElmt {
+        name: b"ldap.responses.result_code\0".as_ptr() as *const libc::c_char,
+        desc: b"match LDAPResult code\0".as_ptr() as *const libc::c_char,
+        url: b"/rules/ldap-keywords.html#ldap.responses.result_code\0".as_ptr()
+            as *const libc::c_char,
+        AppLayerTxMatch: Some(ldap_detect_responses_result_code_match),
+        Setup: ldap_detect_responses_result_code_setup,
+        Free: Some(ldap_detect_responses_result_code_free),
+        flags: 0,
+    };
+    G_LDAP_RESPONSES_RESULT_CODE_KW_ID = DetectHelperKeywordRegister(&kw);
+    G_LDAP_RESPONSES_RESULT_CODE_BUFFER_ID = DetectHelperBufferRegister(
+        b"ldap.responses.result_code\0".as_ptr() as *const libc::c_char,
         ALPROTO_LDAP,
         true,  //to client
         false, //to server
