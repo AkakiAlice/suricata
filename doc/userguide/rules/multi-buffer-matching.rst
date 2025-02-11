@@ -87,6 +87,7 @@ following keywords:
 * ``krb5_cname``
 * ``krb5_sname``
 * ``ldap.responses.dn``
+* ``ldap.responses.message``
 * ``mqtt.subscribe.topic``
 * ``mqtt.unsubscribe.topic``
 * ``quic.cyu.hash``
