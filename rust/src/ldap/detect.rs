@@ -276,11 +276,7 @@ unsafe extern "C" fn ldap_detect_responses_count_free(_de: *mut c_void, ctx: *mu
     rs_detect_u32_free(ctx);
 }
 
-fn aux_ldap_parse_resp_result_code(s: &str) -> Option<DetectLdapRespResultData> {
-    let parts: Vec<&str> = s.split(',').collect();
-    if parts.len() > 2 {
-        return None;
-    }
+fn parse_ldap_index(parts: &[&str]) -> Option<LdapIndex> {
     let index = if parts.len() == 2 {
         match parts[1] {
             "all" => LdapIndex::All,
@@ -293,11 +289,19 @@ fn aux_ldap_parse_resp_result_code(s: &str) -> Option<DetectLdapRespResultData> 
     } else {
         LdapIndex::Any
     };
-    if let Some(ctx) = detect_parse_uint_enum::<u32, LdapResultCode>(parts[0]) {
-        let du32 = ctx;
-        return Some(DetectLdapRespResultData { du32, index });
+    return Some(index);
+}
+
+fn aux_ldap_parse_resp_result_code(s: &str) -> Option<DetectLdapRespResultData> {
+    let parts: Vec<&str> = s.split(',').collect();
+    if parts.len() > 2 {
+        return None;
     }
-    return None;
+
+    let index = parse_ldap_index(&parts)?;
+    let du32 = detect_parse_uint_enum::<u32, LdapResultCode>(parts[0])?;
+
+    Some(DetectLdapRespResultData { du32, index })
 }
 
 unsafe extern "C" fn ldap_parse_responses_result_code(
