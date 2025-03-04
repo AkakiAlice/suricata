@@ -86,6 +86,7 @@ following keywords:
 * ``ike.vendor``
 * ``krb5_cname``
 * ``krb5_sname``
+* ``ldap.responses.dn``
 * ``mqtt.subscribe.topic``
 * ``mqtt.unsubscribe.topic``
 * ``quic.cyu.hash``
