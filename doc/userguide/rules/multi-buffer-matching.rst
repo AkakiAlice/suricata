@@ -47,7 +47,7 @@ Example rule:
 
 The above rule will alert on a single dns query containing
 "example.net" or "example.domain.net" since the rule content
-matches are within a single ``dns.query`` buffer and all 
+matches are within a single ``dns.query`` buffer and all
 content match requirements of the rule are met.
 
 
@@ -65,7 +65,7 @@ Using our example from above, the first query is for example.net
 which matches content:"example"; but does not match content:".com";
 
 The second query is for something.com which would match on the
-content:".com"; but not the content:"example"; 
+content:".com"; but not the content:"example";
 
 So with the Suricata behavior prior to Suricata 7, the signature
 would not fire in this case since both content conditions will
@@ -74,6 +74,8 @@ not be met.
 Multiple buffer matching is currently enabled for use with the
 following keywords:
 
+* ``dns.answer.name``
+* ``dns.query.name``
 * ``dns.query``
 * ``file.data``
 * ``file.magic``
@@ -88,6 +90,14 @@ following keywords:
 * ``mqtt.unsubscribe.topic``
 * ``quic.cyu.hash``
 * ``quic.cyu.string``
-* ``tls.certs``
+* ``sip.content_length``
+* ``sip.content_type``
+* ``sip.from``
+* ``sip.to``
+* ``sip.ua``
+* ``sip.via``
+* ``smtp.rcpt_to``
+* ``tls.alpn``
 * ``tls.cert_subject``
+* ``tls.certs``
 * ``tls.subjectaltname``
